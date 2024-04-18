@@ -4,8 +4,8 @@
 
 struct p_ff_poly {
   uint8_t p_ff;
-  uint8_t deg;      /* deg is always eq last non-zero index in ff_t */
-  uint8_t *coeffs;  /* big endian x^2 + 2x + 3 -> {1,2,3} */
+  uint8_t deg;     /* deg is always eq last non-zero index in ff_t */
+  uint8_t *coeffs; /* big endian x^2 + 2x + 3 -> {1,2,3} */
 };
 
 typedef struct p_ff_poly *p_ff_poly_t;
