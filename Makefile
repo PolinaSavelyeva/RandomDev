@@ -1,6 +1,7 @@
-SOURCE := module
+SOURCE := mymodule
 obj-m += $(SOURCE).o
-module-y := main.o ff.o
+mymodule-y := main.o ff.o
+ccflags-y := -Wall -O2
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
