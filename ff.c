@@ -1,8 +1,6 @@
 #include "ff.h"
 
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
+#include <linux/slab.h> /* memory managment functions */
 
 // x^8 + x^4 + x^3 + x^2 + 1
 uint8_t irr_poly_2_8[] = {1, 0, 0, 0, 1, 1, 1, 0, 1};
@@ -21,42 +19,45 @@ const p_ff_poly_t p_ff_2_8 = &ff_2_8;
 const p_ff_poly_t p_ff_2_16 = &ff_2_16;
 const p_ff_poly_t p_ff_2_32 = &ff_2_32;
 
-static void *xmalloc(size_t n) {
-  void *res = malloc(n);
-  if (!res) exit(-1);
+static void *xkmalloc(size_t n) {
+  /* uses flag GFP_USER or can uses GFP_KERNEL to allocate normal kernel ram
+  https://archive.kernel.org/oldlinux/htmldocs/kernel-api/API-kmalloc.html
+  kmalloc allocates memory of size lesser than one page size (around 4kB) */
+  void *res = kmalloc(n, GFP_USER);
+  if (!res) return NULL;
   return res;
 }
 
-static void *xcalloc(size_t nmemb, size_t size) {
-  void *res = calloc(nmemb, size);
-  if (!res) exit(-1);
+static void *xkcalloc(size_t nmemb, size_t size) {
+  void *res = kcalloc(nmemb, size, GFP_USER);
+  if (!res) return NULL;
   return res;
 }
 
-static ff_elem_t ff_calloc_elem(c_ff_t ff) {
-  ff_elem_t elem = xmalloc(sizeof(struct ff_elem));
+static ff_elem_t ff_kcalloc_elem(c_ff_t ff) {
+  ff_elem_t elem = xkmalloc(sizeof(struct ff_elem));
   elem->ff = ff;
   elem->deg = ff->deg - 1;
-  elem->coeffs = xcalloc(ff->deg, 1);
+  elem->coeffs = xkcalloc(ff->deg, 1);
 
   return elem;
 }
 
-ff_elem_t ff_get_zero(c_ff_t ff) { return ff_calloc_elem(ff); }
+ff_elem_t ff_get_zero(c_ff_t ff) { return ff_kcalloc_elem(ff); }
 
 ff_elem_t ff_get_identity(c_ff_t ff) {
-  ff_elem_t identity = ff_calloc_elem(ff);
+  ff_elem_t identity = ff_kcalloc_elem(ff);
   identity->coeffs[identity->deg] = 1;
 
   return identity;
 }
 
-bool ff_are_eq(c_ff_t fst, c_ff_t snd) {
+uint8_t ff_are_eq(c_ff_t fst, c_ff_t snd) {
   return (fst->p_ff == snd->p_ff && fst->deg == snd->deg &&
           !memcmp(fst->coeffs, snd->coeffs, (fst->deg + 1)));
 }
 
-bool ff_elems_are_eq(c_ff_elem_t fst, c_ff_elem_t snd) {
+uint8_t ff_elems_are_eq(c_ff_elem_t fst, c_ff_elem_t snd) {
   return (ff_are_eq(fst->ff, snd->ff) && fst->deg == snd->deg &&
           !memcmp(fst->coeffs, snd->coeffs, fst->deg + 1));
 }
@@ -64,7 +65,7 @@ bool ff_elems_are_eq(c_ff_elem_t fst, c_ff_elem_t snd) {
 ff_elem_t ff_add(c_ff_elem_t fst, c_ff_elem_t snd) {
   if (!ff_are_eq(fst->ff, snd->ff)) return NULL;
 
-  ff_elem_t res = ff_calloc_elem(fst->ff);
+  ff_elem_t res = ff_kcalloc_elem(fst->ff);
 
   for (uint8_t i = 0; i < res->deg + 1; i++) {
     res->coeffs[i] = (fst->coeffs[i] + snd->coeffs[i]) % fst->ff->p_ff;
@@ -74,7 +75,7 @@ ff_elem_t ff_add(c_ff_elem_t fst, c_ff_elem_t snd) {
 }
 
 ff_elem_t ff_inv_add(c_ff_elem_t elem) {
-  ff_elem_t res = ff_calloc_elem(elem->ff);
+  ff_elem_t res = ff_kcalloc_elem(elem->ff);
 
   for (uint8_t i = 0; i < res->deg + 1; i++) {
     res->coeffs[i] = (elem->ff->p_ff - elem->coeffs[i]) % elem->ff->p_ff;
@@ -84,13 +85,13 @@ ff_elem_t ff_inv_add(c_ff_elem_t elem) {
 }
 
 void p_ff_poly_free(p_ff_poly_t poly) {
-  free(poly->coeffs);
-  free(poly);
+  kfree(poly->coeffs);
+  kfree(poly);
 }
 
 void ff_elem_free(ff_elem_t fst) {
-  free(fst->coeffs);
-  free(fst);
+  kfree(fst->coeffs);
+  kfree(fst);
 }
 
 ff_elem_t ff_sub(c_ff_elem_t fst, c_ff_elem_t snd) {
@@ -126,7 +127,7 @@ static uint64_t uint64_pow(uint64_t base, uint64_t power) {
   return res;
 }
 
-bool ff_is_zero(c_ff_elem_t elem) {
+uint8_t ff_is_zero(c_ff_elem_t elem) {
   return real_deg(elem->deg, elem->coeffs) == -1 ? 1 : 0;
 }
 
@@ -134,7 +135,7 @@ ff_elem_t ff_mult(c_ff_elem_t fst, c_ff_elem_t snd) {
   if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff)) return NULL;
 
   uint8_t mult_deg = 2 * fst->deg;
-  uint8_t *coeffs = xcalloc(mult_deg + 1, 1);
+  uint8_t *coeffs = xkcalloc(mult_deg + 1, 1);
 
   for (uint8_t i = 0; i <= fst->deg; i++) {
     for (uint8_t j = 0; j <= snd->deg; j++) {
@@ -157,15 +158,15 @@ ff_elem_t ff_mult(c_ff_elem_t fst, c_ff_elem_t snd) {
     }
   }
 
-  ff_elem_t res = ff_calloc_elem(fst->ff);
+  ff_elem_t res = ff_kcalloc_elem(fst->ff);
   memcpy(res->coeffs, coeffs + fst->deg, fst->deg + 1);
-  free(coeffs);
+  kfree(coeffs);
 
   return res;
 }
 
 ff_elem_t ff_copy(c_ff_elem_t elem) {
-  ff_elem_t res = ff_calloc_elem(elem->ff);
+  ff_elem_t res = ff_kcalloc_elem(elem->ff);
   memcpy(res->coeffs, elem->coeffs, res->deg + 1);
 
   return res;
@@ -209,7 +210,7 @@ ff_elem_t ff_div(c_ff_elem_t fst, c_ff_elem_t snd) {
 }
 
 ff_elem_t ff_2_8_init_elem(uint8_t coeffs) {
-  ff_elem_t res = ff_calloc_elem(&ff_2_8);
+  ff_elem_t res = ff_kcalloc_elem(&ff_2_8);
 
   uint8_t i = res->deg;
   while (coeffs) {
@@ -222,7 +223,7 @@ ff_elem_t ff_2_8_init_elem(uint8_t coeffs) {
 }
 
 ff_elem_t ff_2_16_init_elem(uint16_t coeffs) {
-  ff_elem_t res = ff_calloc_elem(&ff_2_16);
+  ff_elem_t res = ff_kcalloc_elem(&ff_2_16);
 
   uint8_t i = res->deg;
   while (coeffs) {
@@ -235,7 +236,7 @@ ff_elem_t ff_2_16_init_elem(uint16_t coeffs) {
 }
 
 ff_elem_t ff_2_32_init_elem(uint32_t coeffs) {
-  ff_elem_t res = ff_calloc_elem(&ff_2_32);
+  ff_elem_t res = ff_kcalloc_elem(&ff_2_32);
 
   uint8_t i = res->deg;
   while (coeffs) {
@@ -245,7 +246,4 @@ ff_elem_t ff_2_32_init_elem(uint32_t coeffs) {
   }
 
   return res;
-}
-int main() {
-  return 0;
 }
