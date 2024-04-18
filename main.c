@@ -4,18 +4,23 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
+#include "ff.h"
+
 #define DEVICE_NAME "randomdev"
 
-static int major_num = 0;
+static int major_num;
 
 static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
                               loff_t *offset) {
-  return 0;
+  printk(KERN_ALERT "Sorry, this operation isn't supported.\n");
+  return -EINVAL;
 }
 
+/* Called when a process writes to dev file: echo "hi" > /dev/hello */
 static ssize_t randomdev_write(struct file *flip, const char *buffer,
                                size_t length, loff_t *offset) {
-  return 0;
+  printk(KERN_ALERT "Sorry, this operation isn't supported.\n");
+  return -EINVAL;
 }
 
 static struct file_operations file_ops = {.read = randomdev_read,
@@ -29,12 +34,14 @@ static int __init randomdev_init(void) {
     return major_num;
   }
 
-  printk(KERN_INFO "I was assigned major number %d. To talk to\n", major_num);
-  printk(KERN_INFO "the driver, create a dev file with\n");
-  printk(KERN_INFO "'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, major_num);
-  printk(KERN_INFO "Try various minor numbers. Try to cat and echo to\n");
-  printk(KERN_INFO "the device file.\n");
-  printk(KERN_INFO "Remove the device file and module when done.\n");
+  printk(KERN_INFO "I was assigned major number %d.\n", major_num);
+  printk(
+      KERN_INFO
+      "To talk to the driver, create a dev file with 'mknod /dev/%s c %d 0'.\n",
+      DEVICE_NAME, major_num);
+  printk(KERN_INFO
+         "Try to cat and echo to the device file. Remove the device file and "
+         "module when done.\n");
 
   return 0;
 }
