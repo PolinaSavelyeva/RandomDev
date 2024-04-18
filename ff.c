@@ -20,9 +20,9 @@ const p_ff_poly_t p_ff_2_16 = &ff_2_16;
 const p_ff_poly_t p_ff_2_32 = &ff_2_32;
 
 static void *xkmalloc(size_t n) {
-  /* uses flag GFP_USER or can uses GFP_KERNEL to allocate normal kernel ram
+  /* Uses flag GFP_USER or can uses GFP_KERNEL to allocate normal kernel ram
   https://archive.kernel.org/oldlinux/htmldocs/kernel-api/API-kmalloc.html
-  kmalloc allocates memory of size lesser than one page size (around 4kB) */
+  Kmalloc allocates memory of size lesser than one page size (around 4kB) */
   void *res = kmalloc(n, GFP_USER);
   if (!res) return NULL;
   return res;
