@@ -51,3 +51,5 @@ void ff_elem_free(ff_elem_t fst);
 ff_elem_t ff_2_8_init_elem(uint8_t coeffs);
 ff_elem_t ff_2_16_init_elem(uint16_t coeffs);
 ff_elem_t ff_2_32_init_elem(uint32_t coeffs);
+
+uint8_t ff_2_8_to_uint8(c_ff_elem_t elem);

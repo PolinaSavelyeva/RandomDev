@@ -23,13 +23,13 @@ static void *xkmalloc(size_t n) {
   /* Uses flag GFP_USER or can uses GFP_KERNEL to allocate normal kernel ram
   https://archive.kernel.org/oldlinux/htmldocs/kernel-api/API-kmalloc.html
   kmalloc allocates memory of size lesser than one page size (around 4kB) */
-  void *res = kmalloc(n, GFP_USER);
+  void *res = kmalloc(n, GFP_KERNEL);
   if (!res) return NULL;
   return res;
 }
 
 static void *xkcalloc(size_t nmemb, size_t size) {
-  void *res = kcalloc(nmemb, size, GFP_USER);
+  void *res = kcalloc(nmemb, size, GFP_KERNEL);
   if (!res) return NULL;
   return res;
 }
@@ -260,5 +260,17 @@ ff_elem_t ff_2_32_init_elem(uint32_t coeffs) {
     i--;
   }
 
+  return res;
+}
+
+uint8_t ff_2_8_to_uint8(c_ff_elem_t elem) {
+  uint8_t i;
+  uint8_t res = 0;
+  uint8_t tmp = 1;
+
+  for (i = 0; i < 8; i++) {
+    if (elem->coeffs[7 - i]) res += tmp;
+    tmp *= 2;
+  }
   return res;
 }
