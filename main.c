@@ -15,6 +15,26 @@ static ff_elem_t a_vals[MAX_INPUT_LENGTH];
 static ff_elem_t x_vals[MAX_INPUT_LENGTH];
 static ff_elem_t c;
 static int k_order = 0;
+static int device_is_opened = 0;	
+
+static int randomdev_open(struct inode *inode, struct file *file)
+{
+	if (device_is_opened)
+		return -EBUSY;
+
+	device_is_opened++;
+	try_module_get(THIS_MODULE);
+
+	return 0;
+}
+
+static int randomdev_release(struct inode *inode, struct file *file)
+{
+	device_is_opened--;
+	module_put(THIS_MODULE);
+
+	return 0;
+}
 
 static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
                               loff_t *offset) {
@@ -152,8 +172,13 @@ static ssize_t randomdev_write(struct file *flip, const char *buffer,
   return length;
 }
 
-static struct file_operations file_ops = {.read = randomdev_read,
-                                          .write = randomdev_write};
+static struct file_operations file_ops = {
+  .owner = THIS_MODULE, /* This field is used to prevent the module from being unloaded while its operations are in use */
+  .open = randomdev_open,
+  .release = randomdev_release,
+  .read = randomdev_read,
+  .write = randomdev_write
+  };
 
 static int __init randomdev_init(void) {
   major_num = register_chrdev(0, DEVICE_NAME, &file_ops);
