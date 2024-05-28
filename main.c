@@ -11,8 +11,7 @@
 
 static uint8_t major_num;
 static uint32_t k_order;
-static ff_elem_t *a_vals, *x_vals;
-static ff_elem_t c;
+static ff_elem_t *a_vals, *x_vals, c;
 
 static void free_all(void) {
   uint32_t i;
@@ -20,8 +19,8 @@ static void free_all(void) {
 
   if (k_order) {
     for (i = 0, size = sizeof(ff_elem_t); i < k_order; i++) {
-      ff_elem_free(*(a_vals + i * size));
-      ff_elem_free(*(x_vals + i * size));
+      ff_elem_free(a_vals[i]);
+      ff_elem_free(x_vals[i]);
     }
     kfree(a_vals);
     kfree(x_vals);
@@ -39,26 +38,16 @@ static void *xkmalloc(size_t n) {
 
 static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
                               loff_t *offset) {
-  uint32_t i, j;
+  uint32_t i;
   uint8_t next_num;
-  ff_elem_t tmp_mult, tmp_add;
-  ff_elem_t next_x = ff_copy(c);
+  ff_elem_t tmp_mult, tmp_add, next_x = ff_copy(c);
 
-  printk(KERN_DEBUG "Entering: %s\n", __func__);
-  printk(KERN_DEBUG "Copying was successfull\n");
-
-  /* Count new x element */
   for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "Reading %d byte was successfull\n", i);
     tmp_mult = ff_mult(a_vals[i], x_vals[i]);
-    printk(KERN_DEBUG "Mult byte was successfull\n");
     tmp_add = ff_add(next_x, tmp_mult);
-    printk(KERN_DEBUG "Add byte was successfull\n");
 
     ff_elem_free(tmp_mult);
-    printk(KERN_DEBUG "Free mult was successfull\n");
     ff_elem_free(next_x);
-    printk(KERN_DEBUG "Free next_x was successfull\n");
 
     next_x = tmp_add;
   }
@@ -70,30 +59,12 @@ static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
 
   next_num = ff_2_8_to_uint8(next_x);
 
-  printk(KERN_DEBUG "\n-----------next_x: %u\n", next_num);
-  printk(KERN_DEBUG "k_order: %d\n", k_order);
+  printk(KERN_DEBUG "Next num: %u\n", next_num);
 
-  for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "\na_vals num %d:", i);
-    for (j = 0; j < 8; j++)
-      printk(KERN_DEBUG "Elem %u", a_vals[i]->coeffs[j]);
-  }
-
-  for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "\nx_vals num %d:", i);
-    for (j = 0; j < 8; j++)
-      printk(KERN_DEBUG "Elem %u", x_vals[i]->coeffs[j]);
-  }
-
-  printk(KERN_DEBUG "\nc:\n");
-  for (j = 0; j < 8; j++)
-    printk(KERN_DEBUG "Elem %u", c->coeffs[j]);
-
-  if (copy_to_user(buffer, &next_num, 1)) {
+  if (put_user(next_num, buffer)) {
     printk(KERN_ERR
            "Memory in kernel space could not be copied to user space.\n");
-
-    return -EFAULT; /* Bad adress */
+    return -EFAULT;
   }
 
   return 1;
@@ -101,31 +72,13 @@ static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
 
 static ssize_t randomdev_write(struct file *flip, const char *buffer,
                                size_t length, loff_t *offset) {
-  // TODO add consts vals
-
-  uint32_t i, j;
+  uint32_t i;
   uint8_t *data = kmalloc(length, GFP_KERNEL);
 
   free_all();
 
-  printk(KERN_DEBUG "Entering: %s\n", __func__);
-
-  for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "\nx_vals adresses %p:\n", x_vals[i]);
-  }
-  for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "\na_vals adresses %p:\n", a_vals[i]);
-  }
-
   if (!data) {
     printk(KERN_ERR "Memory allocation failed.\n");
-
-    return -EFAULT;
-  }
-
-  if (!access_ok(buffer, length)) {
-    printk(KERN_ERR "Pointer to a block of memory in user space is invalid.\n");
-    kfree(data);
 
     return -EFAULT;
   }
@@ -163,32 +116,11 @@ static ssize_t randomdev_write(struct file *flip, const char *buffer,
 
   kfree(data);
 
-  printk(KERN_DEBUG "k_order: %d\n", k_order);
-
-  for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "\na_vals num %d:", i);
-    for (j = 0; j < 8; j++)
-      printk(KERN_DEBUG "Elem %u", a_vals[i]->coeffs[j]);
-  }
-
-  for (i = 0; i < k_order; i++) {
-    printk(KERN_DEBUG "\nx_vals num %d:", i);
-    for (j = 0; j < 8; j++)
-      printk(KERN_DEBUG "Elem %u", x_vals[i]->coeffs[j]);
-  }
-
-  printk(KERN_DEBUG "\nc:\n");
-  for (j = 0; j < 8; j++)
-    printk(KERN_DEBUG "Elem %u", c->coeffs[j]);
-
   return length;
 }
 
-static struct file_operations file_ops = {
-    .owner = THIS_MODULE, /* Is used to prevent the module from being
-                             unloaded while its operations are in use */
-    .read = randomdev_read,
-    .write = randomdev_write};
+static struct file_operations file_ops = {.read = randomdev_read,
+                                          .write = randomdev_write};
 
 static int __init randomdev_init(void) {
   k_order = 0;
@@ -208,7 +140,7 @@ static int __init randomdev_init(void) {
                    "/dev/%s c %d 0'.\n",
          DEVICE_NAME, major_num);
   printk(KERN_INFO
-         "Try to cat and echo to the device file. Remove the device file and "
+         "Try to printf and xxd to the device file. Remove the device file and "
          "module when done.\n");
 
   return 0;
