@@ -8,42 +8,43 @@
 #include "ff.h"
 
 #define DEVICE_NAME "randomdev"
-#define MAX_INPUT_LENGTH 16
 
-static int major_num;
-static ff_elem_t a_vals[MAX_INPUT_LENGTH];
-static ff_elem_t x_vals[MAX_INPUT_LENGTH];
+static uint8_t major_num;
+static uint32_t k_order;
+static ff_elem_t *a_vals, *x_vals;
 static ff_elem_t c;
-static int k_order = 0;
-static int device_is_opened = 0;	
 
-static int randomdev_open(struct inode *inode, struct file *file)
-{
-	if (device_is_opened)
-		return -EBUSY;
+static void free_all(void) {
+  uint32_t i;
+  unsigned int size;
 
-	device_is_opened++;
-	try_module_get(THIS_MODULE);
+  if (k_order) {
+    for (i = 0, size = sizeof(ff_elem_t); i < k_order; i++) {
+      ff_elem_free(*(a_vals + i * size));
+      ff_elem_free(*(x_vals + i * size));
+    }
+    kfree(a_vals);
+    kfree(x_vals);
 
-	return 0;
+    ff_elem_free(c);
+  }
 }
 
-static int randomdev_release(struct inode *inode, struct file *file)
-{
-	device_is_opened--;
-	module_put(THIS_MODULE);
-
-	return 0;
+static void *xkmalloc(size_t n) {
+  void *res = kmalloc(n, GFP_KERNEL);
+  if (!res)
+    return NULL;
+  return res;
 }
 
 static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
                               loff_t *offset) {
-  int i, j, next_int;
+  uint32_t i, j;
+  uint8_t next_num;
   ff_elem_t tmp_mult, tmp_add;
   ff_elem_t next_x = ff_copy(c);
 
   printk(KERN_DEBUG "Entering: %s\n", __func__);
-
   printk(KERN_DEBUG "Copying was successfull\n");
 
   /* Count new x element */
@@ -67,29 +68,32 @@ static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
   memmove(x_vals, x_vals + 1, (k_order - 1) * sizeof(ff_elem_t));
   x_vals[k_order - 1] = next_x;
 
-  next_int = ff_2_8_to_uint8(next_x);
+  next_num = ff_2_8_to_uint8(next_x);
 
-  printk(KERN_DEBUG "\n-----------next_x: %u\n", next_int);
+  printk(KERN_DEBUG "\n-----------next_x: %u\n", next_num);
   printk(KERN_DEBUG "k_order: %d\n", k_order);
 
   for (i = 0; i < k_order; i++) {
     printk(KERN_DEBUG "\na_vals num %d:", i);
-    for (j = 0; j < 8; j++) printk(KERN_DEBUG "Elem %u", a_vals[i]->coeffs[j]);
+    for (j = 0; j < 8; j++)
+      printk(KERN_DEBUG "Elem %u", a_vals[i]->coeffs[j]);
   }
 
   for (i = 0; i < k_order; i++) {
     printk(KERN_DEBUG "\nx_vals num %d:", i);
-    for (j = 0; j < 8; j++) printk(KERN_DEBUG "Elem %u", x_vals[i]->coeffs[j]);
+    for (j = 0; j < 8; j++)
+      printk(KERN_DEBUG "Elem %u", x_vals[i]->coeffs[j]);
   }
 
   printk(KERN_DEBUG "\nc:\n");
-  for (j = 0; j < 8; j++) printk(KERN_DEBUG "Elem %u", c->coeffs[j]);
+  for (j = 0; j < 8; j++)
+    printk(KERN_DEBUG "Elem %u", c->coeffs[j]);
 
-  if (copy_to_user(buffer, &next_int, 1)) {
+  if (copy_to_user(buffer, &next_num, 1)) {
     printk(KERN_ERR
            "Memory in kernel space could not be copied to user space.\n");
 
-    return -EFAULT;
+    return -EFAULT; /* Bad adress */
   }
 
   return 1;
@@ -97,10 +101,12 @@ static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
 
 static ssize_t randomdev_write(struct file *flip, const char *buffer,
                                size_t length, loff_t *offset) {
-  // TODO free when not NULL came or put vars to global states
+  // TODO add consts vals
 
-  int i, j;
+  uint32_t i, j;
   uint8_t *data = kmalloc(length, GFP_KERNEL);
+
+  free_all();
 
   printk(KERN_DEBUG "Entering: %s\n", __func__);
 
@@ -117,12 +123,12 @@ static ssize_t randomdev_write(struct file *flip, const char *buffer,
     return -EFAULT;
   }
 
-/*   if (!access_ok(buffer, length)) {
+  if (!access_ok(buffer, length)) {
     printk(KERN_ERR "Pointer to a block of memory in user space is invalid.\n");
     kfree(data);
 
     return -EFAULT;
-  } */
+  }
 
   if (copy_from_user(data, buffer, length)) {
     printk(KERN_ERR
@@ -136,14 +142,17 @@ static ssize_t randomdev_write(struct file *flip, const char *buffer,
 
   if (length != 2 * k_order + 2) {
     printk(KERN_ALERT
-           "Unexpected length of input parameters or incorrect "
-           "input data type.\n");
+           "Unexpected length of input parameters or incorrect input data "
+           "type.\n");
     printk(KERN_ALERT "Expected %d integer elements, but given: %lu\n",
            2 * k_order + 2, length);
     kfree(data);
 
     return -EFAULT;
   }
+
+  a_vals = xkmalloc(sizeof(ff_elem_t) * k_order);
+  x_vals = xkmalloc(sizeof(ff_elem_t) * k_order);
 
   for (i = 0; i < k_order; i++) {
     a_vals[i] = ff_2_8_init_elem(data[1 + i]);
@@ -158,30 +167,35 @@ static ssize_t randomdev_write(struct file *flip, const char *buffer,
 
   for (i = 0; i < k_order; i++) {
     printk(KERN_DEBUG "\na_vals num %d:", i);
-    for (j = 0; j < 8; j++) printk(KERN_DEBUG "Elem %u", a_vals[i]->coeffs[j]);
+    for (j = 0; j < 8; j++)
+      printk(KERN_DEBUG "Elem %u", a_vals[i]->coeffs[j]);
   }
 
   for (i = 0; i < k_order; i++) {
     printk(KERN_DEBUG "\nx_vals num %d:", i);
-    for (j = 0; j < 8; j++) printk(KERN_DEBUG "Elem %u", x_vals[i]->coeffs[j]);
+    for (j = 0; j < 8; j++)
+      printk(KERN_DEBUG "Elem %u", x_vals[i]->coeffs[j]);
   }
 
   printk(KERN_DEBUG "\nc:\n");
-  for (j = 0; j < 8; j++) printk(KERN_DEBUG "Elem %u", c->coeffs[j]);
+  for (j = 0; j < 8; j++)
+    printk(KERN_DEBUG "Elem %u", c->coeffs[j]);
 
   return length;
 }
 
 static struct file_operations file_ops = {
-  .owner = THIS_MODULE, /* This field is used to prevent the module from being unloaded while its operations are in use */
-  .open = randomdev_open,
-  .release = randomdev_release,
-  .read = randomdev_read,
-  .write = randomdev_write
-  };
+    .owner = THIS_MODULE, /* Is used to prevent the module from being
+                             unloaded while its operations are in use */
+    .read = randomdev_read,
+    .write = randomdev_write};
 
 static int __init randomdev_init(void) {
-  major_num = register_chrdev(0, DEVICE_NAME, &file_ops);
+  k_order = 0;
+
+  major_num = register_chrdev(0, DEVICE_NAME,
+                              &file_ops); /* Providing 0 as major number is
+                                             assigning a new free major */
 
   if (major_num < 0) {
     printk(KERN_ERR "Registering char device named randomdev failed.");
@@ -190,10 +204,9 @@ static int __init randomdev_init(void) {
   }
 
   printk(KERN_INFO "I was assigned major number %d.\n", major_num);
-  printk(
-      KERN_INFO
-      "To talk to the driver, create a dev file with 'mknod /dev/%s c %d 0'.\n",
-      DEVICE_NAME, major_num);
+  printk(KERN_INFO "To talk to the driver, create a dev file with 'mknod "
+                   "/dev/%s c %d 0'.\n",
+         DEVICE_NAME, major_num);
   printk(KERN_INFO
          "Try to cat and echo to the device file. Remove the device file and "
          "module when done.\n");
@@ -202,7 +215,8 @@ static int __init randomdev_init(void) {
 }
 
 static void __exit randomdev_exit(void) {
-  // TODO free allocated vars
+  free_all();
+
   unregister_chrdev(major_num, DEVICE_NAME);
   printk(KERN_INFO "Char device randomdev has been unregistered\n");
 }

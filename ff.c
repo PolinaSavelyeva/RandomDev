@@ -20,17 +20,16 @@ const p_ff_poly_t p_ff_2_16 = &ff_2_16;
 const p_ff_poly_t p_ff_2_32 = &ff_2_32;
 
 static void *xkmalloc(size_t n) {
-  /* Uses flag GFP_USER or can uses GFP_KERNEL to allocate normal kernel ram
-  https://archive.kernel.org/oldlinux/htmldocs/kernel-api/API-kmalloc.html
-  kmalloc allocates memory of size lesser than one page size (around 4kB) */
   void *res = kmalloc(n, GFP_KERNEL);
-  if (!res) return NULL;
+  if (!res)
+    return NULL;
   return res;
 }
 
 static void *xkcalloc(size_t nmemb, size_t size) {
   void *res = kcalloc(nmemb, size, GFP_KERNEL);
-  if (!res) return NULL;
+  if (!res)
+    return NULL;
   return res;
 }
 
@@ -66,7 +65,8 @@ ff_elem_t ff_add(c_ff_elem_t fst, c_ff_elem_t snd) {
   ff_elem_t res;
   uint8_t i;
 
-  if (!ff_are_eq(fst->ff, snd->ff)) return NULL;
+  if (!ff_are_eq(fst->ff, snd->ff))
+    return NULL;
 
   res = ff_kcalloc_elem(fst->ff);
 
@@ -102,7 +102,8 @@ ff_elem_t ff_sub(c_ff_elem_t fst, c_ff_elem_t snd) {
   ff_elem_t inv_snd;
   ff_elem_t res;
 
-  if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff)) return NULL;
+  if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff))
+    return NULL;
 
   inv_snd = ff_inv_add(snd);
   res = ff_add(fst, inv_snd);
@@ -117,7 +118,8 @@ static int real_deg(uint8_t deg, const uint8_t *coeffs) {
   uint8_t i;
 
   for (i = 0; i <= deg; i++) {
-    if (coeffs[i]) return deg - i;
+    if (coeffs[i])
+      return deg - i;
   }
 
   return -1;
@@ -147,7 +149,8 @@ ff_elem_t ff_mult(c_ff_elem_t fst, c_ff_elem_t snd) {
   int16_t tmp;
   ff_elem_t res;
 
-  if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff)) return NULL;
+  if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff))
+    return NULL;
 
   mult_deg = 2 * fst->deg;
   coeffs = xkcalloc(mult_deg + 1, 1);
@@ -207,14 +210,16 @@ static ff_elem_t ff_elem_pow(c_ff_elem_t base, uint64_t power) {
 }
 
 ff_elem_t ff_inv_mult(c_ff_elem_t elem) {
-  if (!elem || ff_is_zero(elem)) return NULL;
+  if (!elem || ff_is_zero(elem))
+    return NULL;
 
   return ff_elem_pow(elem, uint64_pow(elem->ff->p_ff, elem->ff->deg) - 2);
 }
 
 ff_elem_t ff_div(c_ff_elem_t fst, c_ff_elem_t snd) {
   ff_elem_t snd_inv, res;
-  if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff)) return NULL;
+  if (!fst || !snd || !ff_are_eq(fst->ff, snd->ff))
+    return NULL;
 
   snd_inv = ff_inv_mult(snd);
   res = snd_inv ? ff_mult(fst, snd_inv) : NULL;
@@ -269,7 +274,8 @@ uint8_t ff_2_8_to_uint8(c_ff_elem_t elem) {
   uint8_t tmp = 1;
 
   for (i = 0; i < 8; i++) {
-    if (elem->coeffs[7 - i]) res += tmp;
+    if (elem->coeffs[7 - i])
+      res += tmp;
     tmp *= 2;
   }
   return res;
