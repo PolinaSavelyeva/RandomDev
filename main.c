@@ -40,7 +40,13 @@ static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
                               loff_t *offset) {
   uint32_t i;
   uint8_t next_num;
-  ff_elem_t tmp_mult, tmp_add, next_x = ff_copy(c);
+  ff_elem_t tmp_mult, tmp_add, next_x;
+
+  if (!k_order) {
+    printk(KERN_ALERT "Write data to device first.\n");
+    return -EINVAL;
+  }
+  next_x = ff_copy(c);
 
   for (i = 0; i < k_order; i++) {
     tmp_mult = ff_mult(a_vals[i], x_vals[i]);
