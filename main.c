@@ -15,10 +15,9 @@ static ff_elem_t *a_vals, *x_vals, c;
 
 static void free_all(void) {
   uint32_t i;
-  unsigned int size;
 
   if (k_order) {
-    for (i = 0, size = sizeof(ff_elem_t); i < k_order; i++) {
+    for (i = 0; i < k_order; i++) {
       ff_elem_free(a_vals[i]);
       ff_elem_free(x_vals[i]);
     }
@@ -38,42 +37,46 @@ static void *xkmalloc(size_t n) {
 
 static ssize_t randomdev_read(struct file *flip, char *buffer, size_t length,
                               loff_t *offset) {
-  uint32_t i;
-  uint8_t next_num;
+  uint32_t i, j;
   ff_elem_t tmp_mult, tmp_add, next_x;
+  uint8_t *vals = kmalloc(length, GFP_KERNEL);
 
   if (!k_order) {
     printk(KERN_ALERT "Write data to device first.\n");
     return -EINVAL;
   }
-  next_x = ff_copy(c);
 
-  for (i = 0; i < k_order; i++) {
-    tmp_mult = ff_mult(a_vals[i], x_vals[i]);
-    tmp_add = ff_add(next_x, tmp_mult);
 
-    ff_elem_free(tmp_mult);
-    ff_elem_free(next_x);
+  for(j=0; j<length;j++){
 
-    next_x = tmp_add;
+    next_x = ff_copy(c);
+
+    for (i = 0; i < k_order; i++) {
+      tmp_mult = ff_mult(a_vals[i], x_vals[i]);
+      tmp_add = ff_add(next_x, tmp_mult);
+
+      ff_elem_free(tmp_mult);
+      ff_elem_free(next_x);
+
+      next_x = tmp_add;
+    }
+    kfree(x_vals[0]);
+
+    memmove(x_vals, x_vals + 1, (k_order - 1) * sizeof(ff_elem_t));
+    x_vals[k_order - 1] = next_x;
+
+    vals[j] = ff_2_8_to_uint8(next_x);
   }
 
-  kfree(x_vals[0]);
+  kfree(vals);
 
-  memmove(x_vals, x_vals + 1, (k_order - 1) * sizeof(ff_elem_t));
-  x_vals[k_order - 1] = next_x;
-
-  next_num = ff_2_8_to_uint8(next_x);
-
-  printk(KERN_DEBUG "Next num: %u\n", next_num);
-
-  if (put_user(next_num, buffer)) {
+  if (copy_to_user(buffer, vals, length)) {
     printk(KERN_ERR
-           "Memory in kernel space could not be copied to user space.\n");
+          "Memory in kernel space could not be copied to user space.\n");
     return -EFAULT;
   }
 
-  return 1;
+  return length;
 }
 
 static ssize_t randomdev_write(struct file *flip, const char *buffer,
